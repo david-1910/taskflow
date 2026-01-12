@@ -1,4 +1,11 @@
+import { tokenStorage } from './auth'
+
 const API_URL = 'http://localhost:3001/api/tasks'
+
+const getHeaders = () => ({
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${tokenStorage.get()}`,
+})
 
 export interface Task {
   id: number
@@ -11,7 +18,9 @@ export interface Task {
 
 export const tasksApi = {
   getAll: async (): Promise<Task[]> => {
-    const response = await fetch(API_URL)
+    const response = await fetch(API_URL, {
+      headers: getHeaders(),
+    })
     if (!response.ok) throw new Error('Ошибка загрузки задач')
     return response.json()
   },
@@ -24,7 +33,7 @@ export const tasksApi = {
   }): Promise<Task> => {
     const response = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     })
     if (!response.ok) throw new Error('Ошибка создания задачи')
@@ -34,7 +43,7 @@ export const tasksApi = {
   update: async (id: number, data: Partial<Task>): Promise<void> => {
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     })
     if (!response.ok) throw new Error('Ошибка обновления задачи')
@@ -43,6 +52,7 @@ export const tasksApi = {
   delete: async (id: number): Promise<void> => {
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     })
     if (!response.ok) throw new Error('Ошибка удаления задачи')
   },

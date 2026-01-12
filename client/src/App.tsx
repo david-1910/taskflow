@@ -3,20 +3,16 @@ import { type Task, tasksApi } from './api/tasks'
 import { TaskItem } from './components/TaskItem'
 import { TaskForm } from './components/TaskForm'
 import { Filters } from './components/Filters'
+import { AuthForm } from './components/AuthForm'
+import { tokenStorage, usernameStorage } from './api/auth'
 import { priorityColor } from './utils/styles'
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!tokenStorage.get())
+  const [username, setUsername] = useState(usernameStorage.get() || '')
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    tasksApi.getAll()
-      .then(setTasks)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
-
   const [newTitle, setNewTitle] = useState('')
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all')
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -32,6 +28,35 @@ function App() {
   const [filterCategory, setFilterCategory] = useState<string | null>(null)
   const [draggedId, setDraggedId] = useState<number | null>(null)
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 })
+
+  const loadTasks = () => {
+    setLoading(true)
+    tasksApi.getAll()
+      .then(setTasks)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadTasks()
+    } else {
+      setLoading(false)
+    }
+  }, [isAuthenticated])
+
+  const handleAuthSuccess = () => {
+    setIsAuthenticated(true)
+    setUsername(usernameStorage.get() || '')
+  }
+
+  const handleLogout = () => {
+    tokenStorage.remove()
+    usernameStorage.remove()
+    setIsAuthenticated(false)
+    setUsername('')
+    setTasks([])
+  }
 
   const showToast = (message: string) => {
     setToast(message)
@@ -178,6 +203,10 @@ function App() {
     setSortBy('default')
   }
 
+  if (!isAuthenticated) {
+    return <AuthForm onSuccess={handleAuthSuccess} />
+  }
+
   if (loading) {
     return <div className="p-8">Загрузка...</div>
   }
@@ -190,12 +219,21 @@ function App() {
     <div className={`p-8 max-w-xl ml-2 min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Мои задачи:</h1>
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className="px-1 py-1 rounded cursor-pointer bg-gray-900 dark:bg-gray-900"
-        >
-          {darkMode ? '☀️' : '🌙'}
-        </button>
+        <div className="flex items-center gap-4">
+          <span className="text-gray-500">{username}</span>
+          <button
+            onClick={handleLogout}
+            className="text-red-500 hover:underline cursor-pointer"
+          >
+            Выйти
+          </button>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="px-1 py-1 rounded cursor-pointer bg-gray-900 dark:bg-gray-900"
+          >
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+        </div>
       </div>
 
       <TaskForm
@@ -262,7 +300,6 @@ function App() {
         ))}
       </ul>
 
-      {/* Модальное окно подтверждения */}
       {deleteConfirmId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
           <div className={`p-6 rounded shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -285,14 +322,12 @@ function App() {
         </div>
       )}
 
-      {/* Toast уведомление */}
       {toast && (
         <div className="fixed top-4 left-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg toast-animation">
           {toast}
         </div>
       )}
 
-      {/* Превью при перетаскивании */}
       {draggedId && (() => {
         const task = tasks.find((t) => t.id === draggedId)
         if (!task) return null
