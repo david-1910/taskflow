@@ -1,6 +1,6 @@
 import type { Task } from '../api/tasks'
 import { priorityColor } from '../utils/styles'
-import { FiEdit2, FiTrash2, FiCheck, FiX, FiCalendar, FiMoreVertical } from 'react-icons/fi'
+import { FiEdit2, FiTrash2, FiCheck, FiX, FiCalendar, FiMoreVertical, FiEye } from 'react-icons/fi'
 
 interface TaskItemProps {
   task: Task
@@ -20,6 +20,7 @@ interface TaskItemProps {
   onDragOver: (e: React.DragEvent) => void
   onDrop: () => void
   isOverdue: boolean
+  onView: () => void
 }
 
 export function TaskItem({
@@ -40,6 +41,7 @@ export function TaskItem({
   onDragOver,
   onDrop,
   isOverdue,
+  onView,
 }: TaskItemProps) {
   return (
     <li
@@ -150,6 +152,18 @@ export function TaskItem({
                 <span>{task.deadline}</span>
               </div>
             )}
+
+            {/* View button */}
+            <button
+              onClick={onView}
+              className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                darkMode
+                  ? 'hover:bg-gray-700 text-slate-400'
+                  : 'hover:bg-white/20 text-white'
+              }`}
+            >
+              <FiEye className="text-lg" />
+            </button>
 
             {/* Edit button */}
             <button
