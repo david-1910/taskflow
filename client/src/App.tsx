@@ -76,6 +76,17 @@ function App() {
     setEditingTitle('')
   }
 
+  const clearCompleted = async () => {
+    const completedTasks = tasks.filter((t) => t.done)
+
+    for (const task of completedTasks) {
+      await fetch(`http://localhost:3001/api/tasks/${task.id}`, {
+        method: 'DELETE',
+      })
+    }
+    setTasks(tasks.filter((t) => !t.done))
+  }
+
   const filteredTasks = tasks.filter((task) => {
     if (filter === 'active') return !task.done
     if (filter === 'completed') return task.done
@@ -109,7 +120,7 @@ function App() {
         />
         <button
           onClick={addTask}
-          className="px-4 py-2 bg-blue-500 text-white rounded ml-2"
+          className="px-4 py-2 bg-blue-500 text-white rounded ml-2 cursor-pointer"
         >
           Добавить
         </button>
@@ -119,19 +130,19 @@ function App() {
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setFilter('all')}
-          className={`px-3 py-1 rounded ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+          className={`px-3 py-1 rounded cursor-pointer ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
         >
           Все
         </button>
         <button
           onClick={() => setFilter('active')}
-          className={`px-3 py-1 rounded ${filter === 'active' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+          className={`px-3 py-1 rounded cursor-pointer ${filter === 'active' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
         >
           Активные
         </button>
         <button
           onClick={() => setFilter('completed')}
-          className={`px-3 py-1 rounded ${filter === 'completed' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+          className={`px-3 py-1 rounded cursor-pointer ${filter === 'completed' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
         >
           Выполненные
         </button>
@@ -142,6 +153,12 @@ function App() {
         Осталось: {activeCount} | Выполнено: {completedCount} | Всего:{' '}
         {tasks.length}
       </p>
+
+      {completedCount > 0 && (
+        <button onClick={clearCompleted} className="text-sm text-gray-500 hover:text-gray-700 mb-4 cursor-pointer">
+          Очистить выполненное ({completedCount})
+        </button>
+      )}
 
       {/* Список */}
       <ul className="space-y-4">
@@ -161,13 +178,13 @@ function App() {
                 />
                 <button
                   onClick={saveEdit}
-                  className="text-green-500 hover:text-green-700"
+                  className="text-green-500 hover:text-green-700 cursor-pointer"
                 >
                   Сохранить
                 </button>
                 <button
                   onClick={cancelEdit}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-500 hover:text-gray-700 cursor-pointer"
                 >
                   Отмена
                 </button>
@@ -180,7 +197,7 @@ function App() {
                     type="checkbox"
                     checked={task.done}
                     onChange={() => toggleTask(task.id)}
-                    className="ml-2"
+                    className="ml-2 cursor-pointer"
                   />
                   <span
                     className={`break-words max-w-[210px] ${task.done ? 'line-through text-gray-400' : ''}`}
@@ -198,13 +215,13 @@ function App() {
                   )}
                   <button
                     onClick={() => startEdit(task)}
-                    className="text-blue-500 hover:text-blue-700"
+                    className="text-blue-500 hover:text-blue-700 cursor-pointer"
                   >
                     Изменить
                   </button>
                   <button
                     onClick={() => deleteTask(task.id)}
-                    className="text-red-500 hover:text-red-700"
+                    className="text-red-500 hover:text-red-700 cursor-pointer"
                   >
                     Удалить
                   </button>
