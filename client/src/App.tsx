@@ -4,6 +4,7 @@ interface Task {
   id: number
   title: string
   done: boolean
+  deadline: string | null
 }
 
 function App() {
@@ -15,18 +16,22 @@ function App() {
   }, [])
 
   const [newTitle, setNewTitle] = useState('')
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [newDeadline, setNewDeadline] = useState('')
 
   const addTask = async () => {
     if (!newTitle.trim()) return
     const response = await fetch('http://localhost:3001/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newTitle }),
+      body: JSON.stringify({ title: newTitle, deadline: newDeadline || null }),
     })
     const newTask = await response.json()
-
     setTasks([...tasks, newTask])
     setNewTitle('')
+    setNewDeadline('')
   }
 
   const deleteTask = async (id: number) => {
@@ -37,20 +42,52 @@ function App() {
   }
 
   const toggleTask = async (id: number) => {
-    const task = tasks.find(t => t.id ===id)
+    const task = tasks.find((t) => t.id === id)
     if (!task) return
-
     await fetch(`http://localhost:3001/api/tasks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ done: !task.done })
+      body: JSON.stringify({ done: !task.done }),
     })
+    setTasks(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+  }
 
+  const startEdit = (task: Task) => {
+    setEditingId(task.id)
+    setEditingTitle(task.title)
+  }
+
+  const saveEdit = async () => {
+    if (!editingId || !editingTitle.trim()) return
+
+    await fetch(`http://localhost:3001/api/tasks/${editingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: editingTitle }),
+    })
     setTasks(
-      tasks.map((t) =>
-        t.id === id ? { ...t, done: !t.done } : t
-      )
+      tasks.map((t) => (t.id === editingId ? { ...t, title: editingTitle } : t))
     )
+    setEditingId(null)
+    setEditingTitle('')
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditingTitle('')
+  }
+
+  const filteredTasks = tasks.filter((task) => {
+    if (filter === 'active') return !task.done
+    if (filter === 'completed') return task.done
+    return true
+  })
+
+  //-Счетчик задач
+  const activeCount = tasks.filter((t) => !t.done).length
+  const completedCount = tasks.filter((t) => t.done).length
+  const isOverdue = (deadline: string | null) => {
+    if (!deadline) return false
+    return new Date(deadline) < new Date()
   }
 
   return (
@@ -64,6 +101,12 @@ function App() {
           placeholder="Нoвая задача..."
           className="flex-1 p-2 border rounded"
         />
+        <input
+          type="date"
+          value={newDeadline}
+          onChange={(e) => setNewDeadline(e.target.value)}
+          className="p-2 border rounded"
+        />
         <button
           onClick={addTask}
           className="px-4 py-2 bg-blue-500 text-white rounded ml-2"
@@ -72,29 +115,102 @@ function App() {
         </button>
       </div>
 
+      {/* Фильтры */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-3 py-1 rounded ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+        >
+          Все
+        </button>
+        <button
+          onClick={() => setFilter('active')}
+          className={`px-3 py-1 rounded ${filter === 'active' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+        >
+          Активные
+        </button>
+        <button
+          onClick={() => setFilter('completed')}
+          className={`px-3 py-1 rounded ${filter === 'completed' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+        >
+          Выполненные
+        </button>
+      </div>
+
+      {/* Счетчик  */}
+      <p className="text-gray-500 mb-4">
+        Осталось: {activeCount} | Выполнено: {completedCount} | Всего:{' '}
+        {tasks.length}
+      </p>
+
+      {/* Список */}
       <ul className="space-y-4">
-        {tasks.map((task) => (
+        {filteredTasks.map((task) => (
           <li
             key={task.id}
             className="p-3 bg-gray-100 rounded flex justify-between items-center"
           >
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={task.done}
-                onChange={() => toggleTask(task.id)}
-                className="ml-2 mr-2"
-              />
-              <span className={task.done ? 'line-through text-gray-400' : ''}>
-                {task.title}
-              </span>
-            </div>
-            <button
-              onClick={() => deleteTask(task.id)}
-              className="text-red-500 mr-4 hover:text-red-700"
-            >
-              Удалить
-            </button>
+            {editingId === task.id ? (
+              //- Режим редактирования
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  className="flex-1 p-1 border rounded"
+                />
+                <button
+                  onClick={saveEdit}
+                  className="text-green-500 hover:text-green-700"
+                >
+                  Сохранить
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              //- Обычный режим
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={task.done}
+                    onChange={() => toggleTask(task.id)}
+                    className="ml-2"
+                  />
+                  <span
+                    className={`break-words max-w-[210px] ${task.done ? 'line-through text-gray-400' : ''}`}
+                  >
+                    {task.title}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {task.deadline && (
+                    <span
+                      className={`text-sm ${isOverdue(task.deadline) && !task.done ? 'text-red-500 font-bold' : 'text-gray-500'}`}
+                    >
+                      📅 {task.deadline}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => startEdit(task)}
+                    className="text-blue-500 hover:text-blue-700"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    onClick={() => deleteTask(task.id)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </>
+            )}
           </li>
         ))}
       </ul>

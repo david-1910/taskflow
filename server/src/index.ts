@@ -16,9 +16,11 @@ app.get("/api/tasks", (req, res) => {
 });
 
 app.post("/api/tasks", (req, res) => {
-    const { title } = req.body;
-    const result = db.prepare("INSERT INTO tasks (title) VALUES (?)").run(title);
-    res.json({ id: result.lastInsertRowid, title, done: false });
+    const { title, deadline } = req.body;
+    const result = db
+        .prepare("INSERT INTO tasks (title, deadline) VALUES (?, ?)")
+        .run(title, deadline || null);
+    res.json({ id: result.lastInsertRowid, title, done: false, deadline: deadline || null });
 });
 
 app.delete("/api/tasks/:id", (req, res) => {
@@ -29,8 +31,23 @@ app.delete("/api/tasks/:id", (req, res) => {
 
 app.patch("/api/tasks/:id", (req, res) => {
     const { id } = req.params;
-    const { done } = req.body;
-    db.prepare("UPDATE tasks SET done = ? WHERE id = ?").run(done ? 1 : 0, id);
+    const { done, title, deadline } = req.body;
+    if (title !== undefined) {
+        db.prepare("UPDATE tasks SET title = ? WHERE id = ?").run(title, id);
+    }
+    if (done !== undefined) {
+        db.prepare("UPDATE tasks SET done = ? WHERE id = ?").run(
+            done ? 1 : 0,
+            id
+        );
+    }
+    if (deadline !== undefined) {
+        db.prepare("UPDATE tasks SET deadline = ? WHERE id = ?").run(
+            deadline,
+            id
+        );
+    }
+
     res.json({ success: true });
 });
 
