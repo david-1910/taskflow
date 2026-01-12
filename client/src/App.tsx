@@ -6,6 +6,7 @@ import { Filters } from './components/Filters'
 import { AuthForm } from './components/AuthForm'
 import { tokenStorage, usernameStorage } from './api/auth'
 import { priorityColor } from './utils/styles'
+import { FiLogOut, FiSun, FiMoon, FiCheckCircle, FiUser } from 'react-icons/fi'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!tokenStorage.get())
@@ -208,160 +209,211 @@ function App() {
   }
 
   if (loading) {
-    return <div className="p-8">Загрузка...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600">
+        <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   if (error) {
-    return <div className="p-8 text-red-500">Ошибка: {error}</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600">
+        <div className="bg-white/20 backdrop-blur-lg p-8 rounded-2xl text-white">
+          Ошибка: {error}
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className={`p-8 max-w-xl ml-2 min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Мои задачи:</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-500">{username}</span>
-          <button
-            onClick={handleLogout}
-            className="text-red-500 hover:underline cursor-pointer"
-          >
-            Выйти
-          </button>
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="px-1 py-1 rounded cursor-pointer bg-gray-900 dark:bg-gray-900"
-          >
-            {darkMode ? '☀️' : '🌙'}
-          </button>
-        </div>
-      </div>
-
-      <TaskForm
-        darkMode={darkMode}
-        newTitle={newTitle}
-        newDeadline={newDeadline}
-        newPriority={newPriority}
-        newCategory={newCategory}
-        onTitleChange={setNewTitle}
-        onDeadlineChange={setNewDeadline}
-        onPriorityChange={setNewPriority}
-        onCategoryChange={setNewCategory}
-        onSubmit={addTask}
-      />
-
-      <Filters
-        darkMode={darkMode}
-        filter={filter}
-        sortBy={sortBy}
-        searchQuery={searchQuery}
-        filterCategory={filterCategory}
-        categories={categories}
-        onFilterChange={setFilter}
-        onSortChange={setSortBy}
-        onSearchChange={setSearchQuery}
-        onCategoryChange={setFilterCategory}
-      />
-
-      <p className="text-gray-500 mb-4">
-        Осталось: {activeCount} | Выполнено: {completedCount} | Всего: {tasks.length}
-      </p>
-
-      {completedCount > 0 && (
-        <button
-          onClick={clearCompleted}
-          className="text-sm text-gray-500 hover:text-gray-700 mb-4 cursor-pointer"
-        >
-          Очистить выполненное ({completedCount})
-        </button>
-      )}
-
-      <ul className="space-y-4">
-        {sortedTasks.map((task) => (
-          <TaskItem
-            key={task.id}
-            task={task}
-            darkMode={darkMode}
-            isEditing={editingId === task.id}
-            editingTitle={editingTitle}
-            isDragging={draggedId === task.id}
-            onToggle={() => toggleTask(task.id)}
-            onDelete={() => setDeleteConfirmId(task.id)}
-            onStartEdit={() => startEdit(task)}
-            onSaveEdit={saveEdit}
-            onCancelEdit={cancelEdit}
-            onEditingTitleChange={setEditingTitle}
-            onDragStart={(e) => handleDragStart(e, task.id)}
-            onDrag={handleDrag}
-            onDragEnd={() => setDraggedId(null)}
-            onDragOver={handleDragOver}
-            onDrop={() => handleDrop(task.id)}
-            isOverdue={isOverdue(task.deadline)}
-          />
-        ))}
-      </ul>
-
-      {deleteConfirmId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
-          <div className={`p-6 rounded shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <p className="mb-4">Удалить эту задачу?</p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                className={`px-4 py-2 rounded cursor-pointer ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-              >
-                Отмена
-              </button>
-              <button
-                onClick={() => deleteTask(deleteConfirmId)}
-                className="px-4 py-2 bg-red-500 text-white rounded cursor-pointer"
-              >
-                Удалить
-              </button>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600'}`}>
+      <div className="max-w-2xl mx-auto p-6">
+        {/* Шапка */}
+        <header className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${darkMode ? 'bg-slate-600' : 'bg-white/30'}`}>
+                <FiCheckCircle className={`text-2xl ${darkMode ? 'text-white' : 'text-white'}`} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">TaskFlow</h1>
+                <div className="flex items-center gap-1 text-white/70 text-sm">
+                  <FiUser className="text-sm" />
+                  <span>{username}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed top-4 left-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg toast-animation">
-          {toast}
-        </div>
-      )}
-
-      {draggedId && (() => {
-        const task = tasks.find((t) => t.id === draggedId)
-        if (!task) return null
-        return (
-          <div
-            className={`fixed pointer-events-none p-3 rounded shadow-2xl z-50 flex justify-between items-center gap-4 border-2 border-blue-500 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}
-            style={{
-              left: dragPosition.x + 10,
-              top: dragPosition.y - 20,
-              minWidth: 300,
-              opacity: 0.95,
-            }}
-          >
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">⠿</span>
-              <input type="checkbox" checked={task.done} readOnly className="cursor-pointer" />
-              <span className={`w-2 h-2 rounded-full ${priorityColor(task.priority)}`} />
-              <span className={task.done ? 'line-through text-gray-400' : ''}>
-                {task.title}
-              </span>
-              {task.category && (
-                <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">
-                  {task.category}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              {task.deadline && <span className="text-gray-500">{task.deadline}</span>}
-              <span className="text-blue-500">Изменить</span>
-              <span className="text-red-500">Удалить</span>
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-3 rounded-xl transition-all cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white/20 hover:bg-white/30'}`}
+              >
+                {darkMode ? <FiSun className="text-yellow-400 text-xl" /> : <FiMoon className="text-white text-xl" />}
+              </button>
+              <button
+                onClick={handleLogout}
+                className={`p-3 rounded-xl transition-all cursor-pointer ${darkMode ? 'bg-red-600/20 hover:bg-red-600/30' : 'bg-white/20 hover:bg-white/30'}`}
+              >
+                <FiLogOut className="text-red-400 text-xl" />
+              </button>
             </div>
           </div>
-        )
-      })()}
+        </header>
+
+        {/* Форма добавления */}
+        <div className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+          <TaskForm
+            darkMode={darkMode}
+            newTitle={newTitle}
+            newDeadline={newDeadline}
+            newPriority={newPriority}
+            newCategory={newCategory}
+            onTitleChange={setNewTitle}
+            onDeadlineChange={setNewDeadline}
+            onPriorityChange={setNewPriority}
+            onCategoryChange={setNewCategory}
+            onSubmit={addTask}
+          />
+        </div>
+
+        {/* Фильтры */}
+        <div className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+          <Filters
+            darkMode={darkMode}
+            filter={filter}
+            sortBy={sortBy}
+            searchQuery={searchQuery}
+            filterCategory={filterCategory}
+            categories={categories}
+            onFilterChange={setFilter}
+            onSortChange={setSortBy}
+            onSearchChange={setSearchQuery}
+            onCategoryChange={setFilterCategory}
+          />
+        </div>
+
+        {/* Статистика */}
+        <div className={`backdrop-blur-lg rounded-2xl p-4 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+          <div className="flex justify-between items-center text-white">
+            <div className="flex gap-6">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{activeCount}</div>
+                <div className="text-xs text-white/70">Активных</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{completedCount}</div>
+                <div className="text-xs text-white/70">Выполнено</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{tasks.length}</div>
+                <div className="text-xs text-white/70">Всего</div>
+              </div>
+            </div>
+            {completedCount > 0 && (
+              <button
+                onClick={clearCompleted}
+                className="text-sm text-white/70 hover:text-white cursor-pointer transition-colors"
+              >
+                Очистить выполненные
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Список задач */}
+        <ul className="space-y-3">
+          {sortedTasks.map((task) => (
+            <TaskItem
+              key={task.id}
+              task={task}
+              darkMode={darkMode}
+              isEditing={editingId === task.id}
+              editingTitle={editingTitle}
+              isDragging={draggedId === task.id}
+              onToggle={() => toggleTask(task.id)}
+              onDelete={() => setDeleteConfirmId(task.id)}
+              onStartEdit={() => startEdit(task)}
+              onSaveEdit={saveEdit}
+              onCancelEdit={cancelEdit}
+              onEditingTitleChange={setEditingTitle}
+              onDragStart={(e) => handleDragStart(e, task.id)}
+              onDrag={handleDrag}
+              onDragEnd={() => setDraggedId(null)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop(task.id)}
+              isOverdue={isOverdue(task.deadline)}
+            />
+          ))}
+        </ul>
+
+        {sortedTasks.length === 0 && (
+          <div className={`backdrop-blur-lg rounded-2xl p-12 text-center border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+            <div className="text-6xl mb-4">📝</div>
+            <p className="text-white/70">Нет задач</p>
+          </div>
+        )}
+
+        {/* Модальное окно подтверждения */}
+        {deleteConfirmId && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className={`p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Удалить задачу?
+              </h3>
+              <p className={`mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Это действие нельзя отменить
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className={`flex-1 px-4 py-2 rounded-xl cursor-pointer transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'}`}
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={() => deleteTask(deleteConfirmId)}
+                  className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl cursor-pointer transition-colors"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toast уведомление */}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-2xl z-50 animate-bounce">
+            {toast}
+          </div>
+        )}
+
+        {/* Превью при перетаскивании */}
+        {draggedId && (() => {
+          const task = tasks.find((t) => t.id === draggedId)
+          if (!task) return null
+          return (
+            <div
+              className={`fixed pointer-events-none p-4 rounded-xl shadow-2xl z-50 border-2 border-slate-400 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}
+              style={{
+                left: dragPosition.x + 10,
+                top: dragPosition.y - 20,
+                minWidth: 280,
+                opacity: 0.95,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <input type="checkbox" checked={task.done} readOnly className="w-5 h-5" />
+                <span className={`w-3 h-3 rounded-full ${priorityColor(task.priority)}`} />
+                <span className={task.done ? 'line-through opacity-50' : ''}>
+                  {task.title}
+                </span>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
     </div>
   )
 }
