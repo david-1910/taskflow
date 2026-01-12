@@ -17,4 +17,16 @@ try {
   // Колонка уже существует
 }
 
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'medium'`)
+} catch (e) {
+  // Колонка уже существует
+}
+
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN category TEXT`);
+} catch (e) {
+  
+}
+
 export default db;

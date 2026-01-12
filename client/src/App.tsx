@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react'
-
-interface Task {
-  id: number
-  title: string
-  done: boolean
-  deadline: string | null
-}
+import { type Task, tasksApi } from './api/tasks'
+import { TaskItem } from './components/TaskItem'
+import { TaskForm } from './components/TaskForm'
+import { Filters } from './components/Filters'
+import { priorityColor } from './utils/styles'
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    fetch('http://localhost:3001/api/tasks')
-      .then((response) => response.json())
-      .then((data) => setTasks(data))
+    tasksApi.getAll()
+      .then(setTasks)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
   }, [])
 
   const [newTitle, setNewTitle] = useState('')
@@ -21,10 +23,15 @@ function App() {
   const [editingTitle, setEditingTitle] = useState('')
   const [newDeadline, setNewDeadline] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'default' | 'date' | 'title'>('default')
+  const [sortBy, setSortBy] = useState<'default' | 'date' | 'title' | 'priority'>('default')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(false)
+  const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high'>('medium')
+  const [newCategory, setNewCategory] = useState('')
+  const [filterCategory, setFilterCategory] = useState<string | null>(null)
+  const [draggedId, setDraggedId] = useState<number | null>(null)
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 })
 
   const showToast = (message: string) => {
     setToast(message)
@@ -33,36 +40,44 @@ function App() {
 
   const addTask = async () => {
     if (!newTitle.trim()) return
-    const response = await fetch('http://localhost:3001/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newTitle, deadline: newDeadline || null }),
-    })
-    const newTask = await response.json()
-    setTasks([...tasks, newTask])
-    setNewTitle('')
-    setNewDeadline('')
-    showToast('Задача добавлена')
+    try {
+      const newTask = await tasksApi.create({
+        title: newTitle,
+        deadline: newDeadline || null,
+        priority: newPriority,
+        category: newCategory || null,
+      })
+      setTasks([...tasks, newTask])
+      setNewTitle('')
+      setNewDeadline('')
+      setNewPriority('medium')
+      setNewCategory('')
+      showToast('Задача добавлена')
+    } catch {
+      showToast('Ошибка при добавлении')
+    }
   }
 
   const deleteTask = async (id: number) => {
-    await fetch('http://localhost:3001/api/tasks/' + id, {
-      method: 'DELETE',
-    })
-    setTasks(tasks.filter((task) => task.id !== id))
-    setDeleteConfirmId(null)
-    showToast('Задача удалена')
+    try {
+      await tasksApi.delete(id)
+      setTasks(tasks.filter((task) => task.id !== id))
+      setDeleteConfirmId(null)
+      showToast('Задача удалена')
+    } catch {
+      showToast('Ошибка при удалении')
+    }
   }
 
   const toggleTask = async (id: number) => {
     const task = tasks.find((t) => t.id === id)
     if (!task) return
-    await fetch(`http://localhost:3001/api/tasks/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ done: !task.done }),
-    })
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+    try {
+      await tasksApi.update(id, { done: !task.done })
+      setTasks(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+    } catch {
+      showToast('Ошибка при обновлении')
+    }
   }
 
   const startEdit = (task: Task) => {
@@ -72,19 +87,17 @@ function App() {
 
   const saveEdit = async () => {
     if (!editingId || !editingTitle.trim()) return
-
-    await fetch(`http://localhost:3001/api/tasks/${editingId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: editingTitle }),
-    })
-    setTasks(
-      tasks.map((t) => (t.id === editingId ? { ...t, title: editingTitle } : t))
-    )
-    setEditingId(null)
-    setEditingTitle('')
-    showToast('Задача изменена')
+    try {
+      await tasksApi.update(editingId, { title: editingTitle })
+      setTasks(tasks.map((t) => (t.id === editingId ? { ...t, title: editingTitle } : t)))
+      setEditingId(null)
+      setEditingTitle('')
+      showToast('Задача изменена')
+    } catch {
+      showToast('Ошибка при сохранении')
+    }
   }
+
   const cancelEdit = () => {
     setEditingId(null)
     setEditingTitle('')
@@ -92,53 +105,89 @@ function App() {
 
   const clearCompleted = async () => {
     const completedTasks = tasks.filter((t) => t.done)
-
-    for (const task of completedTasks) {
-      await fetch(`http://localhost:3001/api/tasks/${task.id}`, {
-        method: 'DELETE',
-      })
+    try {
+      for (const task of completedTasks) {
+        await tasksApi.delete(task.id)
+      }
+      setTasks(tasks.filter((t) => !t.done))
+      showToast('Выполненные задачи удалены')
+    } catch {
+      showToast('Ошибка при удалении')
     }
-    setTasks(tasks.filter((t) => !t.done))
-    showToast('Выполненные задачи удалены')
   }
+
+  const categories = [...new Set(tasks.map((t) => t.category).filter(Boolean))] as string[]
 
   const filteredTasks = tasks.filter((task) => {
     if (filter === 'active' && task.done) return false
     if (filter === 'completed' && !task.done) return false
-
-    if (
-      searchQuery &&
-      !task.title.toLowerCase().includes(searchQuery.toLowerCase())
-    ) {
+    if (filterCategory && task.category !== filterCategory) return false
+    if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
     }
     return true
   })
 
+  const priorityOrder = { high: 0, medium: 1, low: 2 }
   const sortedTasks = [...filteredTasks].sort((a, b) => {
-    if (sortBy === 'title') {
-      return a.title.localeCompare(b.title)
-    }
+    if (sortBy === 'title') return a.title.localeCompare(b.title)
     if (sortBy === 'date') {
       if (!a.deadline) return 1
       if (!b.deadline) return -1
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
     }
+    if (sortBy === 'priority') return priorityOrder[a.priority] - priorityOrder[b.priority]
     return 0
   })
 
-  //-Счетчик задач
   const activeCount = tasks.filter((t) => !t.done).length
   const completedCount = tasks.filter((t) => t.done).length
+
   const isOverdue = (deadline: string | null) => {
     if (!deadline) return false
     return new Date(deadline) < new Date()
   }
 
+  const handleDragStart = (e: React.DragEvent, id: number) => {
+    setDraggedId(id)
+    const img = new Image()
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    e.dataTransfer.setDragImage(img, 0, 0)
+    setDragPosition({ x: e.clientX, y: e.clientY })
+  }
+
+  const handleDrag = (e: React.DragEvent) => {
+    if (e.clientX !== 0 && e.clientY !== 0) {
+      setDragPosition({ x: e.clientX, y: e.clientY })
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (targetId: number) => {
+    if (draggedId === null || draggedId === targetId) return
+    const draggedIndex = tasks.findIndex((t) => t.id === draggedId)
+    const targetIndex = tasks.findIndex((t) => t.id === targetId)
+    const newTasks = [...tasks]
+    const [draggedTask] = newTasks.splice(draggedIndex, 1)
+    newTasks.splice(targetIndex, 0, draggedTask)
+    setTasks(newTasks)
+    setDraggedId(null)
+    setSortBy('default')
+  }
+
+  if (loading) {
+    return <div className="p-8">Загрузка...</div>
+  }
+
+  if (error) {
+    return <div className="p-8 text-red-500">Ошибка: {error}</div>
+  }
+
   return (
-    <div
-      className={`p-8 max-w-xl ml-2 min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}
-    >
+    <div className={`p-8 max-w-xl ml-2 min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Мои задачи:</h1>
         <button
@@ -148,87 +197,35 @@ function App() {
           {darkMode ? '☀️' : '🌙'}
         </button>
       </div>
-      <div className="flex gap-4 mb-10">
-        <input
-          type="text"
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addTask()}
-          placeholder="Нoвая задача..."
-          className={`flex-1 p-2 border rounded ${darkMode ? 'bg-gray-800 border-gray-600' : ''}`}
-        />
-        <input
-          type="date"
-          value={newDeadline}
-          onChange={(e) => setNewDeadline(e.target.value)}
-          className={`flex-1 p-2 border rounded ${darkMode ? 'bg-gray-800 border-gray-600' : ''}`}
-        />
-        <button
-          onClick={addTask}
-          className="px-4 py-2 bg-blue-500 text-white rounded ml-2 cursor-pointer"
-        >
-          Добавить
-        </button>
-      </div>
 
-      {/* Фильтры */}
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setFilter('all')}
-          className={`px-3 py-1 rounded cursor-pointer ${filter === 'all' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          Все
-        </button>
-        <button
-          onClick={() => setFilter('active')}
-          className={`px-3 py-1 rounded cursor-pointer ${filter === 'active' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          Активные
-        </button>
-        <button
-          onClick={() => setFilter('completed')}
-          className={`px-3 py-1 rounded cursor-pointer ${filter === 'completed' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          Выполненные
-        </button>
-      </div>
-
-      {/* Поиск */}
-      <input
-        type="text"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Поиск задач.."
-        className={`flex-1 w-full p-2 mb-4 border rounded ${darkMode ? 'bg-gray-800 border-gray-600' : ''}`}
+      <TaskForm
+        darkMode={darkMode}
+        newTitle={newTitle}
+        newDeadline={newDeadline}
+        newPriority={newPriority}
+        newCategory={newCategory}
+        onTitleChange={setNewTitle}
+        onDeadlineChange={setNewDeadline}
+        onPriorityChange={setNewPriority}
+        onCategoryChange={setNewCategory}
+        onSubmit={addTask}
       />
 
-      {/* Сортировка */}
-      <div className="flex gap-2 mb-4">
-        <span className="text-gray-500">Сортировка:</span>
-        <button
-          onClick={() => setSortBy('default')}
-          className={`px-2 py-1 rounded text-sm cursor-pointer ${sortBy === 'default' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          По умолчанию
-        </button>
-        <button
-          onClick={() => setSortBy('date')}
-          className={`px-2 py-1 rounded text-sm cursor-pointer ${sortBy === 'date' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          По дате
-        </button>
-        <button
-          onClick={() => setSortBy('title')}
-          className={`px-2 py-1 rounded text-sm cursor-pointer ${sortBy === 'title' ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
-        >
-          По названию
-        </button>
-      </div>
+      <Filters
+        darkMode={darkMode}
+        filter={filter}
+        sortBy={sortBy}
+        searchQuery={searchQuery}
+        filterCategory={filterCategory}
+        categories={categories}
+        onFilterChange={setFilter}
+        onSortChange={setSortBy}
+        onSearchChange={setSearchQuery}
+        onCategoryChange={setFilterCategory}
+      />
 
-      {/* Счетчик  */}
       <p className="text-gray-500 mb-4">
-        Осталось: {activeCount} | Выполнено: {completedCount} | Всего:{' '}
-        {tasks.length}
+        Осталось: {activeCount} | Выполнено: {completedCount} | Всего: {tasks.length}
       </p>
 
       {completedCount > 0 && (
@@ -240,75 +237,28 @@ function App() {
         </button>
       )}
 
-      {/* Список */}
       <ul className="space-y-4">
         {sortedTasks.map((task) => (
-          <li
+          <TaskItem
             key={task.id}
-            className={`p-3 rounded flex justify-between items-center ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}
-          >
-            {editingId === task.id ? (
-              //- Режим редактирования
-              <div className="flex items-center gap-2 flex-1">
-                <input
-                  type="text"
-                  value={editingTitle}
-                  onChange={(e) => setEditingTitle(e.target.value)}
-                  className={`flex-1 p-1 border rounded ${darkMode ? 'bg-gray-800 border-gray-600' : ''}`}
-                />
-                <button
-                  onClick={saveEdit}
-                  className="text-green-500 hover:text-green-700 cursor-pointer"
-                >
-                  Сохранить
-                </button>
-                <button
-                  onClick={cancelEdit}
-                  className="text-gray-500 hover:text-gray-700 cursor-pointer"
-                >
-                  Отмена
-                </button>
-              </div>
-            ) : (
-              //- Обычный режим
-              <>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={task.done}
-                    onChange={() => toggleTask(task.id)}
-                    className={`ml-2 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-600' : ''}`}
-                  />
-                  <span
-                    className={`break-words max-w-[210px] ${task.done ? 'line-through text-gray-400' : ''}`}
-                  >
-                    {task.title}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {task.deadline && (
-                    <span
-                      className={`text-sm ${isOverdue(task.deadline) && !task.done ? 'text-red-500 font-bold' : 'text-gray-500'}`}
-                    >
-                      📅 {task.deadline}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => startEdit(task)}
-                    className="text-blue-500 hover:text-blue-700 cursor-pointer"
-                  >
-                    Изменить
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(task.id)}
-                    className="text-red-500 hover:text-red-700 cursor-pointer"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </>
-            )}
-          </li>
+            task={task}
+            darkMode={darkMode}
+            isEditing={editingId === task.id}
+            editingTitle={editingTitle}
+            isDragging={draggedId === task.id}
+            onToggle={() => toggleTask(task.id)}
+            onDelete={() => setDeleteConfirmId(task.id)}
+            onStartEdit={() => startEdit(task)}
+            onSaveEdit={saveEdit}
+            onCancelEdit={cancelEdit}
+            onEditingTitleChange={setEditingTitle}
+            onDragStart={(e) => handleDragStart(e, task.id)}
+            onDrag={handleDrag}
+            onDragEnd={() => setDraggedId(null)}
+            onDragOver={handleDragOver}
+            onDrop={() => handleDrop(task.id)}
+            isOverdue={isOverdue(task.deadline)}
+          />
         ))}
       </ul>
 
@@ -341,6 +291,42 @@ function App() {
           {toast}
         </div>
       )}
+
+      {/* Превью при перетаскивании */}
+      {draggedId && (() => {
+        const task = tasks.find((t) => t.id === draggedId)
+        if (!task) return null
+        return (
+          <div
+            className={`fixed pointer-events-none p-3 rounded shadow-2xl z-50 flex justify-between items-center gap-4 border-2 border-blue-500 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}
+            style={{
+              left: dragPosition.x + 10,
+              top: dragPosition.y - 20,
+              minWidth: 300,
+              opacity: 0.95,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">⠿</span>
+              <input type="checkbox" checked={task.done} readOnly className="cursor-pointer" />
+              <span className={`w-2 h-2 rounded-full ${priorityColor(task.priority)}`} />
+              <span className={task.done ? 'line-through text-gray-400' : ''}>
+                {task.title}
+              </span>
+              {task.category && (
+                <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">
+                  {task.category}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              {task.deadline && <span className="text-gray-500">{task.deadline}</span>}
+              <span className="text-blue-500">Изменить</span>
+              <span className="text-red-500">Удалить</span>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -16,11 +16,20 @@ app.get("/api/tasks", (req, res) => {
 });
 
 app.post("/api/tasks", (req, res) => {
-    const { title, deadline } = req.body;
+    const { title, deadline, priority, category } = req.body;
     const result = db
-        .prepare("INSERT INTO tasks (title, deadline) VALUES (?, ?)")
-        .run(title, deadline || null);
-    res.json({ id: result.lastInsertRowid, title, done: false, deadline: deadline || null });
+        .prepare(
+            "INSERT INTO tasks (title, deadline, priority, category) VALUES (?, ?, ?, ?)"
+        )
+        .run(title, deadline || null, priority || "medium", category || null);
+    res.json({
+        id: result.lastInsertRowid,
+        title,
+        done: false,
+        deadline: deadline || null,
+        priority: priority || "medium",
+        category: category || null,
+    });
 });
 
 app.delete("/api/tasks/:id", (req, res) => {
@@ -31,7 +40,7 @@ app.delete("/api/tasks/:id", (req, res) => {
 
 app.patch("/api/tasks/:id", (req, res) => {
     const { id } = req.params;
-    const { done, title, deadline } = req.body;
+    const { done, title, deadline, priority, category } = req.body;
     if (title !== undefined) {
         db.prepare("UPDATE tasks SET title = ? WHERE id = ?").run(title, id);
     }
@@ -44,6 +53,18 @@ app.patch("/api/tasks/:id", (req, res) => {
     if (deadline !== undefined) {
         db.prepare("UPDATE tasks SET deadline = ? WHERE id = ?").run(
             deadline,
+            id
+        );
+    }
+    if (priority !== undefined) {
+        db.prepare("UPDATE tasks SET priority = ? WHERE id = ?").run(
+            priority,
+            id
+        );
+    }
+    if (category !== undefined) {
+        db.prepare("UPDATE tasks SET category = ? WHERE id = ?").run(
+            category,
             id
         );
     }
