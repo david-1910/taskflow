@@ -1,12 +1,24 @@
-import { useState, useEffect } from 'react'
-import { type Task, tasksApi } from './api/tasks'
+import { useEffect, useState } from 'react'
+import type { NewTask, SortBy, StatusFilter, Task } from './types'
+import { tasksApi } from './api/tasks'
+import { tokenStorage, usernameStorage } from './api/auth'
 import { TaskItem } from './components/TaskItem'
 import { TaskForm } from './components/TaskForm'
 import { Filters } from './components/Filters'
 import { AuthForm } from './components/AuthForm'
-import { tokenStorage, usernameStorage } from './api/auth'
-import { priorityColor } from './utils/styles'
+import { ConfirmDeleteModal } from './components/ConfirmDeleteModal'
+import { TaskViewModal } from './components/TaskViewModal'
+import { appBackgroundClass, cardClass, priorityColor } from './utils/styles'
 import { FiLogOut, FiSun, FiMoon, FiCheckCircle, FiUser } from 'react-icons/fi'
+
+const PRIORITY_ORDER: Record<Task['priority'], number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+}
+
+const isOverdue = (deadline: string | null) =>
+  deadline !== null && new Date(deadline) < new Date()
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!tokenStorage.get())
@@ -14,38 +26,36 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [newTitle, setNewTitle] = useState('')
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all')
+  const [filter, setFilter] = useState<StatusFilter>('all')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
-  const [newDeadline, setNewDeadline] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'default' | 'date' | 'title' | 'priority'>('default')
+  const [sortBy, setSortBy] = useState<SortBy>('default')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(false)
-  const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high'>('medium')
-  const [newCategory, setNewCategory] = useState('')
   const [filterCategory, setFilterCategory] = useState<string | null>(null)
   const [draggedId, setDraggedId] = useState<number | null>(null)
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 })
   const [viewingTask, setViewingTask] = useState<Task | null>(null)
 
-  const loadTasks = () => {
-    setLoading(true)
-    tasksApi.getAll()
-      .then(setTasks)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }
-
   useEffect(() => {
-    if (isAuthenticated) {
-      loadTasks()
-    } else {
+    if (!isAuthenticated) {
       setLoading(false)
+      return
     }
+    setLoading(true)
+    tasksApi
+      .getAll()
+      .then(setTasks)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
   }, [isAuthenticated])
+
+  const showToast = (message: string) => {
+    setToast(message)
+    setTimeout(() => setToast(null), 4000)
+  }
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
@@ -60,25 +70,10 @@ function App() {
     setTasks([])
   }
 
-  const showToast = (message: string) => {
-    setToast(message)
-    setTimeout(() => setToast(null), 4000)
-  }
-
-  const addTask = async () => {
-    if (!newTitle.trim()) return
+  const addTask = async (draft: NewTask) => {
     try {
-      const newTask = await tasksApi.create({
-        title: newTitle,
-        deadline: newDeadline || null,
-        priority: newPriority,
-        category: newCategory || null,
-      })
-      setTasks([...tasks, newTask])
-      setNewTitle('')
-      setNewDeadline('')
-      setNewPriority('medium')
-      setNewCategory('')
+      const newTask = await tasksApi.create(draft)
+      setTasks((prev) => [...prev, newTask])
       showToast('Задача добавлена')
     } catch {
       showToast('Ошибка при добавлении')
@@ -88,7 +83,7 @@ function App() {
   const deleteTask = async (id: number) => {
     try {
       await tasksApi.delete(id)
-      setTasks(tasks.filter((task) => task.id !== id))
+      setTasks((prev) => prev.filter((task) => task.id !== id))
       setDeleteConfirmId(null)
       showToast('Задача удалена')
     } catch {
@@ -101,13 +96,16 @@ function App() {
     if (!task) return
     try {
       await tasksApi.update(id, { done: !task.done })
-      setTasks(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+      )
     } catch {
       showToast('Ошибка при обновлении')
     }
   }
 
   const startEdit = (task: Task) => {
+    setViewingTask(null)
     setEditingId(task.id)
     setEditingTitle(task.title)
   }
@@ -116,7 +114,11 @@ function App() {
     if (!editingId || !editingTitle.trim()) return
     try {
       await tasksApi.update(editingId, { title: editingTitle })
-      setTasks(tasks.map((t) => (t.id === editingId ? { ...t, title: editingTitle } : t)))
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === editingId ? { ...t, title: editingTitle } : t
+        )
+      )
       setEditingId(null)
       setEditingTitle('')
       showToast('Задача изменена')
@@ -133,52 +135,55 @@ function App() {
   const clearCompleted = async () => {
     const completedTasks = tasks.filter((t) => t.done)
     try {
-      for (const task of completedTasks) {
-        await tasksApi.delete(task.id)
-      }
-      setTasks(tasks.filter((t) => !t.done))
+      await Promise.all(completedTasks.map((task) => tasksApi.delete(task.id)))
+      setTasks((prev) => prev.filter((t) => !t.done))
       showToast('Выполненные задачи удалены')
     } catch {
       showToast('Ошибка при удалении')
     }
   }
 
-  const categories = [...new Set(tasks.map((t) => t.category).filter(Boolean))] as string[]
+  const categories = [
+    ...new Set(tasks.map((t) => t.category).filter(Boolean)),
+  ] as string[]
 
   const filteredTasks = tasks.filter((task) => {
     if (filter === 'active' && task.done) return false
     if (filter === 'completed' && !task.done) return false
     if (filterCategory && task.category !== filterCategory) return false
-    if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (
+      searchQuery &&
+      !task.title.toLowerCase().includes(searchQuery.toLowerCase())
+    ) {
       return false
     }
     return true
   })
 
-  const priorityOrder = { high: 0, medium: 1, low: 2 }
   const sortedTasks = [...filteredTasks].sort((a, b) => {
-    if (sortBy === 'title') return a.title.localeCompare(b.title)
-    if (sortBy === 'date') {
-      if (!a.deadline) return 1
-      if (!b.deadline) return -1
-      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+    switch (sortBy) {
+      case 'title':
+        return a.title.localeCompare(b.title)
+      case 'date': {
+        if (!a.deadline) return 1
+        if (!b.deadline) return -1
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+      }
+      case 'priority':
+        return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+      default:
+        return 0
     }
-    if (sortBy === 'priority') return priorityOrder[a.priority] - priorityOrder[b.priority]
-    return 0
   })
 
   const activeCount = tasks.filter((t) => !t.done).length
   const completedCount = tasks.filter((t) => t.done).length
 
-  const isOverdue = (deadline: string | null) => {
-    if (!deadline) return false
-    return new Date(deadline) < new Date()
-  }
-
   const handleDragStart = (e: React.DragEvent, id: number) => {
     setDraggedId(id)
     const img = new Image()
-    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    img.src =
+      'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
     e.dataTransfer.setDragImage(img, 0, 0)
     setDragPosition({ x: e.clientX, y: e.clientY })
   }
@@ -211,7 +216,7 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600">
+      <div className={`${appBackgroundClass(false)} flex items-center justify-center`}>
         <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -219,7 +224,7 @@ function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600">
+      <div className={`${appBackgroundClass(false)} flex items-center justify-center`}>
         <div className="bg-white/20 backdrop-blur-lg p-8 rounded-2xl text-white">
           Ошибка: {error}
         </div>
@@ -227,15 +232,22 @@ function App() {
     )
   }
 
+  const draggedTask =
+    draggedId !== null ? tasks.find((t) => t.id === draggedId) : undefined
+
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600'}`}>
+    <div className={appBackgroundClass(darkMode)}>
       <div className="max-w-2xl mx-auto p-6">
         {/* Шапка */}
-        <header className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+        <header className={`${cardClass(darkMode)} p-6 mb-6`}>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${darkMode ? 'bg-slate-600' : 'bg-white/30'}`}>
-                <FiCheckCircle className={`text-2xl ${darkMode ? 'text-white' : 'text-white'}`} />
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  darkMode ? 'bg-slate-600' : 'bg-white/30'
+                }`}
+              >
+                <FiCheckCircle className="text-2xl text-white" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white">TaskFlow</h1>
@@ -248,13 +260,25 @@ function App() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`p-3 rounded-xl transition-all cursor-pointer ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white/20 hover:bg-white/30'}`}
+                className={`p-3 rounded-xl transition-all cursor-pointer ${
+                  darkMode
+                    ? 'bg-gray-700 hover:bg-gray-600'
+                    : 'bg-white/20 hover:bg-white/30'
+                }`}
               >
-                {darkMode ? <FiSun className="text-yellow-400 text-xl" /> : <FiMoon className="text-white text-xl" />}
+                {darkMode ? (
+                  <FiSun className="text-yellow-400 text-xl" />
+                ) : (
+                  <FiMoon className="text-white text-xl" />
+                )}
               </button>
               <button
                 onClick={handleLogout}
-                className={`p-3 rounded-xl transition-all cursor-pointer ${darkMode ? 'bg-red-600/20 hover:bg-red-600/30' : 'bg-white/20 hover:bg-white/30'}`}
+                className={`p-3 rounded-xl transition-all cursor-pointer ${
+                  darkMode
+                    ? 'bg-red-600/20 hover:bg-red-600/30'
+                    : 'bg-white/20 hover:bg-white/30'
+                }`}
               >
                 <FiLogOut className="text-red-400 text-xl" />
               </button>
@@ -263,23 +287,12 @@ function App() {
         </header>
 
         {/* Форма добавления */}
-        <div className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
-          <TaskForm
-            darkMode={darkMode}
-            newTitle={newTitle}
-            newDeadline={newDeadline}
-            newPriority={newPriority}
-            newCategory={newCategory}
-            onTitleChange={setNewTitle}
-            onDeadlineChange={setNewDeadline}
-            onPriorityChange={setNewPriority}
-            onCategoryChange={setNewCategory}
-            onSubmit={addTask}
-          />
+        <div className={`${cardClass(darkMode)} p-6 mb-6`}>
+          <TaskForm darkMode={darkMode} onSubmit={addTask} />
         </div>
 
         {/* Фильтры */}
-        <div className={`backdrop-blur-lg rounded-2xl p-6 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+        <div className={`${cardClass(darkMode)} p-6 mb-6`}>
           <Filters
             darkMode={darkMode}
             filter={filter}
@@ -295,21 +308,19 @@ function App() {
         </div>
 
         {/* Статистика */}
-        <div className={`backdrop-blur-lg rounded-2xl p-4 mb-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+        <div className={`${cardClass(darkMode)} p-4 mb-6`}>
           <div className="flex justify-between items-center text-white">
             <div className="flex gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold">{activeCount}</div>
-                <div className="text-xs text-white/70">Активных</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{completedCount}</div>
-                <div className="text-xs text-white/70">Выполнено</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{tasks.length}</div>
-                <div className="text-xs text-white/70">Всего</div>
-              </div>
+              {[
+                { value: activeCount, label: 'Активных' },
+                { value: completedCount, label: 'Выполнено' },
+                { value: tasks.length, label: 'Всего' },
+              ].map((stat) => (
+                <div key={stat.label} className="text-center">
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <div className="text-xs text-white/70">{stat.label}</div>
+                </div>
+              ))}
             </div>
             {completedCount > 0 && (
               <button
@@ -350,117 +361,30 @@ function App() {
         </ul>
 
         {sortedTasks.length === 0 && (
-          <div className={`backdrop-blur-lg rounded-2xl p-12 text-center border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white/20 border-white/30'}`}>
+          <div className={`${cardClass(darkMode)} p-12 text-center`}>
             <div className="text-6xl mb-4">📝</div>
             <p className="text-white/70">Нет задач</p>
           </div>
         )}
 
-        {/* Модальное окно подтверждения */}
-        {deleteConfirmId && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className={`p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Удалить задачу?
-              </h3>
-              <p className={`mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Это действие нельзя отменить
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeleteConfirmId(null)}
-                  className={`flex-1 px-4 py-2 rounded-xl cursor-pointer transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'}`}
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={() => deleteTask(deleteConfirmId)}
-                  className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl cursor-pointer transition-colors"
-                >
-                  Удалить
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* Модальное окно подтверждения удаления */}
+        {deleteConfirmId !== null && (
+          <ConfirmDeleteModal
+            darkMode={darkMode}
+            onConfirm={() => deleteTask(deleteConfirmId)}
+            onCancel={() => setDeleteConfirmId(null)}
+          />
         )}
 
         {/* Модальное окно просмотра задачи */}
         {viewingTask && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className={`p-6 rounded-2xl shadow-2xl max-w-lg w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <span className={`w-4 h-4 rounded-full ${priorityColor(viewingTask.priority)}`} />
-                  <span className={`text-sm px-2 py-1 rounded ${
-                    viewingTask.priority === 'high'
-                      ? 'bg-red-100 text-red-700'
-                      : viewingTask.priority === 'medium'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-green-100 text-green-700'
-                  }`}>
-                    {viewingTask.priority === 'high' ? 'Высокий' : viewingTask.priority === 'medium' ? 'Средний' : 'Низкий'}
-                  </span>
-                  {viewingTask.done && (
-                    <span className="text-sm px-2 py-1 rounded bg-slate-100 text-slate-700">
-                      Выполнено
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => setViewingTask(null)}
-                  className={`p-2 rounded-lg cursor-pointer transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <h3 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} ${viewingTask.done ? 'line-through opacity-50' : ''}`}>
-                {viewingTask.title}
-              </h3>
-
-              <div className={`space-y-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                {viewingTask.category && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Категория:</span>
-                    <span className={`px-2 py-1 text-sm rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                      {viewingTask.category}
-                    </span>
-                  </div>
-                )}
-
-                {viewingTask.deadline && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Дедлайн:</span>
-                    <span className={`px-2 py-1 text-sm rounded ${
-                      isOverdue(viewingTask.deadline) && !viewingTask.done
-                        ? 'bg-red-100 text-red-700'
-                        : darkMode ? 'bg-gray-700' : 'bg-gray-100'
-                    }`}>
-                      {viewingTask.deadline}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setViewingTask(null)
-                    startEdit(viewingTask)
-                  }}
-                  className={`flex-1 px-4 py-2 rounded-xl cursor-pointer transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'}`}
-                >
-                  Редактировать
-                </button>
-                <button
-                  onClick={() => setViewingTask(null)}
-                  className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-xl cursor-pointer transition-colors"
-                >
-                  Закрыть
-                </button>
-              </div>
-            </div>
-          </div>
+          <TaskViewModal
+            task={viewingTask}
+            darkMode={darkMode}
+            isOverdue={isOverdue}
+            onEdit={startEdit}
+            onClose={() => setViewingTask(null)}
+          />
         )}
 
         {/* Toast уведомление */}
@@ -471,29 +395,34 @@ function App() {
         )}
 
         {/* Превью при перетаскивании */}
-        {draggedId && (() => {
-          const task = tasks.find((t) => t.id === draggedId)
-          if (!task) return null
-          return (
-            <div
-              className={`fixed pointer-events-none p-4 rounded-xl shadow-2xl z-50 border-2 border-slate-400 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}
-              style={{
-                left: dragPosition.x + 10,
-                top: dragPosition.y - 20,
-                minWidth: 280,
-                opacity: 0.95,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <input type="checkbox" checked={task.done} readOnly className="w-5 h-5" />
-                <span className={`w-3 h-3 rounded-full ${priorityColor(task.priority)}`} />
-                <span className={task.done ? 'line-through opacity-50' : ''}>
-                  {task.title}
-                </span>
-              </div>
+        {draggedTask && (
+          <div
+            className={`fixed pointer-events-none p-4 rounded-xl shadow-2xl z-50 border-2 border-slate-400 ${
+              darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+            }`}
+            style={{
+              left: dragPosition.x + 10,
+              top: dragPosition.y - 20,
+              minWidth: 280,
+              opacity: 0.95,
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={draggedTask.done}
+                readOnly
+                className="w-5 h-5"
+              />
+              <span
+                className={`w-3 h-3 rounded-full ${priorityColor(draggedTask.priority)}`}
+              />
+              <span className={draggedTask.done ? 'line-through opacity-50' : ''}>
+                {draggedTask.title}
+              </span>
             </div>
-          )
-        })()}
+          </div>
+        )}
       </div>
     </div>
   )

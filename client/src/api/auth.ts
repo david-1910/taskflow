@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:3001/api'
+import { request, tokenStorage, usernameStorage } from './client'
+
+export { tokenStorage, usernameStorage }
 
 export interface AuthResponse {
   token: string
@@ -6,42 +8,17 @@ export interface AuthResponse {
 }
 
 export const authApi = {
-  signup: async (username: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_URL}/signup`, {
+  signup: (username: string, password: string): Promise<AuthResponse> =>
+    request<AuthResponse>('/signup', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
-    })
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Ошибка регистрации')
-    }
-    return response.json()
-  },
+      fallbackError: 'Ошибка регистрации',
+    }),
 
-  signin: async (username: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_URL}/signin`, {
+  signin: (username: string, password: string): Promise<AuthResponse> =>
+    request<AuthResponse>('/signin', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
-    })
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Ошибка входа')
-    }
-    return response.json()
-  },
-}
-
-// Работа с токеном
-export const tokenStorage = {
-  get: () => localStorage.getItem('token'),
-  set: (token: string) => localStorage.setItem('token', token),
-  remove: () => localStorage.removeItem('token'),
-}
-
-export const usernameStorage = {
-  get: () => localStorage.getItem('username'),
-  set: (username: string) => localStorage.setItem('username', username),
-  remove: () => localStorage.removeItem('username'),
+      fallbackError: 'Ошибка входа',
+    }),
 }

@@ -1,6 +1,7 @@
-import Database from "better-sqlite3";
+import Database from 'better-sqlite3'
+import { config } from './config'
 
-const db = new Database("tasks.db");
+const db = new Database(config.dbFile)
 
 // Таблица пользователей
 db.exec(`
@@ -9,9 +10,9 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL
   )
-`);
+`)
 
-// Таблица задач
+// Таблица задач (полная схема — новые БД создаются сразу с нужными колонками)
 db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,22 +24,24 @@ db.exec(`
     user_id INTEGER,
     FOREIGN KEY (user_id) REFERENCES users(id)
   )
-`);
+`)
 
-// Миграции для существующих таблиц
-const migrations = [
-  "ALTER TABLE tasks ADD COLUMN deadline TEXT",
+// Миграции для существующих (старых) таблиц: добавляем недостающие колонки.
+// SQLite не поддерживает "ADD COLUMN IF NOT EXISTS", поэтому пробуем и
+// игнорируем ошибку "duplicate column name".
+const optionalColumns = [
+  'ALTER TABLE tasks ADD COLUMN deadline TEXT',
   "ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'medium'",
-  "ALTER TABLE tasks ADD COLUMN category TEXT",
-  "ALTER TABLE tasks ADD COLUMN user_id INTEGER",
-];
+  'ALTER TABLE tasks ADD COLUMN category TEXT',
+  'ALTER TABLE tasks ADD COLUMN user_id INTEGER',
+]
 
-for (const sql of migrations) {
+for (const sql of optionalColumns) {
   try {
-    db.exec(sql);
+    db.exec(sql)
   } catch {
     // Колонка уже существует
   }
 }
 
-export default db;
+export default db
