@@ -1,4 +1,4 @@
-import type { Task } from '../api/tasks'
+import type { Task } from '../types'
 import { priorityColor } from '../utils/styles'
 import { FiEdit2, FiTrash2, FiCheck, FiX, FiCalendar, FiMoreVertical, FiEye } from 'react-icons/fi'
 

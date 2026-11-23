@@ -1,59 +1,39 @@
-import { tokenStorage } from './auth'
+import { request } from './client'
 
-const API_URL = 'http://localhost:3001/api/tasks'
-
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  Authorization: `Bearer ${tokenStorage.get()}`,
-})
+export type Priority = 'low' | 'medium' | 'high'
 
 export interface Task {
   id: number
   title: string
   done: boolean
   deadline: string | null
-  priority: 'low' | 'medium' | 'high'
+  priority: Priority
   category: string | null
 }
 
+export type NewTask = Omit<Task, 'id' | 'done'>
+export type TaskPatch = Partial<Omit<Task, 'id'>>
+
 export const tasksApi = {
-  getAll: async (): Promise<Task[]> => {
-    const response = await fetch(API_URL, {
-      headers: getHeaders(),
-    })
-    if (!response.ok) throw new Error('Ошибка загрузки задач')
-    return response.json()
-  },
+  getAll: (): Promise<Task[]> => request<Task[]>('/tasks'),
 
-  create: async (data: {
-    title: string
-    deadline: string | null
-    priority: 'low' | 'medium' | 'high'
-    category: string | null
-  }): Promise<Task> => {
-    const response = await fetch(API_URL, {
+  create: (data: NewTask): Promise<Task> =>
+    request<Task>('/tasks', {
       method: 'POST',
-      headers: getHeaders(),
       body: JSON.stringify(data),
-    })
-    if (!response.ok) throw new Error('Ошибка создания задачи')
-    return response.json()
-  },
+      fallbackError: 'Ошибка создания задачи',
+    }),
 
-  update: async (id: number, data: Partial<Task>): Promise<void> => {
-    const response = await fetch(`${API_URL}/${id}`, {
+  update: (id: number, data: TaskPatch): Promise<void> =>
+    request<void>(`/tasks/${id}`, {
       method: 'PATCH',
-      headers: getHeaders(),
       body: JSON.stringify(data),
-    })
-    if (!response.ok) throw new Error('Ошибка обновления задачи')
-  },
+      fallbackError: 'Ошибка обновления задачи',
+    }),
 
-  delete: async (id: number): Promise<void> => {
-    const response = await fetch(`${API_URL}/${id}`, {
+  delete: (id: number): Promise<void> =>
+    request<void>(`/tasks/${id}`, {
       method: 'DELETE',
-      headers: getHeaders(),
-    })
-    if (!response.ok) throw new Error('Ошибка удаления задачи')
-  },
+      fallbackError: 'Ошибка удаления задачи',
+    }),
 }
